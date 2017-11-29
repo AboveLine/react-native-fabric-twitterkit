@@ -11,6 +11,9 @@ var { NativeModules } = require('react-native');
 var SMXTwitter = NativeModules.SMXTwitter;
 
 module.exports = {
+  init: function (options) {
+    SMXTwitter.init(options)
+  },
   login: function (cb) {
     SMXTwitter.login(cb);
   },

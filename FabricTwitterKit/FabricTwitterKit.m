@@ -21,6 +21,14 @@
 
 RCT_EXPORT_MODULE();
 
+RCT_EXPORT_METHOD(init:(NSDictionary *)options
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject
+                  )
+{
+    [[Twitter sharedInstance] startWithConsumerKey:options[@"consumerKey"] consumerSecret:options[@"consumerSecret"]];
+}
+
 RCT_EXPORT_METHOD(login:(RCTResponseSenderBlock)callback)
 {
     [[Twitter sharedInstance] logInWithCompletion:^(TWTRSession *session, NSError *error) {
