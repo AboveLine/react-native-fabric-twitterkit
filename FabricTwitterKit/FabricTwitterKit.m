@@ -29,6 +29,25 @@ RCT_EXPORT_METHOD(init:(NSDictionary *)options
     [[Twitter sharedInstance] startWithConsumerKey:options[@"consumerKey"] consumerSecret:options[@"consumerSecret"]];
 }
 
+RCT_EXPORT_METHOD(loginWithCreds:(NSDictionary *)creds :(RCTResponseSenderBlock)callback)
+{
+    NSString *authToken = creds[@"authToken"];
+    NSString *authTokenSecret = creds[@"authTokenSecret"];
+    TWTRSessionStore *store = [[Twitter sharedInstance] sessionStore];
+    [store saveSessionWithAuthToken:authToken authTokenSecret:authTokenSecret completion:^(TWTRSession *session, NSError *error) {
+        if (session) {
+            NSDictionary *body = @{@"authToken": session.authToken,
+                                   @"authTokenSecret": session.authTokenSecret,
+                                   @"userID":session.userID,
+                                   @"userName":session.userName};
+            callback(@[[NSNull null], body]);
+        } else {
+            NSLog(@"error: %@", [error localizedDescription]);
+            callback(@[[error localizedDescription]]);
+        }
+    }];
+}
+
 RCT_EXPORT_METHOD(login:(RCTResponseSenderBlock)callback)
 {
     [[Twitter sharedInstance] logInWithCompletion:^(TWTRSession *session, NSError *error) {
