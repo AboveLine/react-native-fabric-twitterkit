@@ -14,9 +14,11 @@
 #import <React/RCTEventDispatcher.h>
 #import <React/RCTBridge.h>
 //#import <Crashlytics/Crashlytics.h>
-#import <TwitterKit/TwitterKit.h>
 
-@implementation FabricTwitterKit
+@implementation FabricTwitterKit {
+    RCTPromiseResolveBlock composeTweetResolve;
+    RCTPromiseRejectBlock composeTweetReject;
+}
 @synthesize bridge = _bridge;
 
 RCT_EXPORT_MODULE();
@@ -29,7 +31,10 @@ RCT_EXPORT_METHOD(init:(NSDictionary *)options
     [[Twitter sharedInstance] startWithConsumerKey:options[@"consumerKey"] consumerSecret:options[@"consumerSecret"]];
 }
 
-RCT_EXPORT_METHOD(loginWithCreds:(NSDictionary *)creds :(RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(loginWithCreds:(NSDictionary *)creds
+                  :(RCTPromiseResolveBlock)resolve
+                  :(RCTPromiseRejectBlock)reject
+                  )
 {
     NSString *authToken = creds[@"authToken"];
     NSString *authTokenSecret = creds[@"authTokenSecret"];
@@ -40,10 +45,10 @@ RCT_EXPORT_METHOD(loginWithCreds:(NSDictionary *)creds :(RCTResponseSenderBlock)
                                    @"authTokenSecret": session.authTokenSecret,
                                    @"userID":session.userID,
                                    @"userName":session.userName};
-            callback(@[[NSNull null], body]);
+            resolve(body);
         } else {
             NSLog(@"error: %@", [error localizedDescription]);
-            callback(@[[error localizedDescription]]);
+            reject(@"error", @"twitter kit loginWithCreds failed", error);
         }
     }];
 }
@@ -173,34 +178,37 @@ RCT_EXPORT_METHOD(fetchTweet:(NSDictionary *)options :(RCTResponseSenderBlock)ca
 
 }
 
-RCT_EXPORT_METHOD(composeTweet:(NSDictionary *)options :(RCTResponseSenderBlock)callback) {
+RCT_EXPORT_METHOD(composeTweet:(NSDictionary *)options
+                  :(RCTPromiseResolveBlock)resolve
+                  :(RCTPromiseRejectBlock)reject
+                  )
+{
+    NSString *setText = options[@"setText"];
+    NSString *setURL = options[@"setURL"];
+    NSString *setImage = options[@"setImage"];
 
-    NSString *body = options[@"body"];
-
-    TWTRComposer *composer = [[TWTRComposer alloc] init];
-
-    if (body) {
-        [composer setText:body];
-    }
+    NSString *composedText = [NSString stringWithFormat:@"%@ %@", setText, setURL];
 
     UIViewController *rootView = [UIApplication sharedApplication].keyWindow.rootViewController;
-    [composer showFromViewController:rootView completion:^(TWTRComposerResult result) {
 
-        bool completed = NO, cancelled = NO, error = NO;
-
-        if (result == TWTRComposerResultCancelled) {
-            cancelled = YES;
-        }
-        else {
-            completed = YES;
-        }
-
-        callback(@[@(completed), @(cancelled), @(error)]);
-
-    }];
+    if ([[Twitter sharedInstance].sessionStore hasLoggedInUsers]) {
+        TWTRComposerViewController *composer = [[TWTRComposerViewController alloc]
+                                                initWithInitialText:composedText
+                                                image:[UIImage imageNamed:setImage]
+                                                videoURL:nil];
+        composer.delegate = self;
+        self->composeTweetResolve = resolve;
+        self->composeTweetReject = reject;
+        [rootView presentViewController:composer animated:YES completion:nil];
+    } else {
+        reject(@"error", @"TwitterKit: A user must already be logged into TwitterKit before composing a tweet.", nil);
+    }
 }
 
-RCT_EXPORT_METHOD(logOut)
+RCT_EXPORT_METHOD(logOut
+                  :(RCTPromiseResolveBlock)resolve
+                  :(RCTPromiseRejectBlock)reject
+                  )
 {
     TWTRSessionStore *store = [[Twitter sharedInstance] sessionStore];
     NSString *userID = store.session.userID;
@@ -212,6 +220,25 @@ RCT_EXPORT_METHOD(logOut)
 - (dispatch_queue_t)methodQueue
 {
     return dispatch_get_main_queue();
+}
+
+- (void)composerDidCancel:(TWTRComposerViewController *)controller
+{
+    self->composeTweetResolve(@false);
+}
+
+- (void)composerDidFail:(TWTRComposerViewController *)controller withError:(NSError *)error
+{
+    UIViewController *rootView = [UIApplication sharedApplication].keyWindow.rootViewController;
+    [rootView dismissViewControllerAnimated:YES completion:nil];
+    self->composeTweetReject(@"error", @"TwitterKit: composerDidFail", error);
+}
+
+- (void)composerDidSucceed:(TWTRComposerViewController *)controller withTweet:(TWTRTweet *)tweet
+{
+    NSDictionary *result = @{@"tweetID": tweet.tweetID,
+                             @"text": tweet.text};
+    self->composeTweetResolve(result);
 }
 
 @end
